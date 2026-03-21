@@ -6,14 +6,14 @@ app = FastAPI()
 
 # Map your model IDs to your actual HF Space URLs
 MODEL_MAP = {
-    "3": ("E-motionAssistant/Space4", None),
-    "4": ("E-motionAssistant/Space5", "/predict"),
-    "5": ("E-motionAssistant/Space5", "/lambda"),
-    "6": ("E-motionAssistant/TherapyEnglish","/lambda"),
-    "7": ("E-motionAssistant/TherapyEnglish","/predict"),
-    "8": ("E-motionAssistant/Space3","/english_tts"),
-    "9": ("E-motionAssistant/Space3","/sinhala_tts"),
-    "10": ("E-motionAssistant/Space3","/tamil_tts"),
+    "1": ("E-motionAssistant/Space4", None),
+    "2": ("E-motionAssistant/Space5", "/predict"),
+    "3": ("E-motionAssistant/Space5", "/lambda"),
+    "4": ("E-motionAssistant/TherapyEnglish","/lambda"),
+    "5": ("E-motionAssistant/TherapyEnglish","/predict"),
+    "6": ("E-motionAssistant/Space3","/english_tts"),
+    "7": ("E-motionAssistant/Space3","/sinhala_tts"),
+    "8": ("E-motionAssistant/Space3","/tamil_tts"),
 
     
 }
