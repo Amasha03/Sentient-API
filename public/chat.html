@@ -82,7 +82,6 @@
   </style>
 </head>
 <body>
-<!-- SIDEBAR -->
 <aside class="sidebar">
   <div class="sidebar-logo">E.motion³</div>
   <button class="btn-new" onclick="newConv()"><span style="font-size:1.2rem;line-height:1">＋</span> New Conversation</button>
@@ -97,7 +96,6 @@
   </div>
 </aside>
 
-<!-- MAIN -->
 <div class="chat-main">
   <div class="topbar">
     <div class="topbar-left">
@@ -130,21 +128,22 @@
 </div>
 
 <script>
-const API='http://localhost:5000';
-let convId=genId(),convs=JSON.parse(localStorage.getItem('e3_convs')||'{}');
-let isRec=false,mediaRec=null,chunks=[],speechRec=null,curTranscript='';
+// --- CONFIGURATION ---
+const API = 'http://127.0.0.1:5000'; // Make sure this matches your Flask port
+let convId = genId(), convs = JSON.parse(localStorage.getItem('e3_convs') || '{}');
+let isRec = false, mediaRec = null, chunks = [], speechRec = null, curTranscript = '';
+let currentLanguage = 'english'; // Default language
 
 // ── INIT ──
 (function(){
-  const user=JSON.parse(localStorage.getItem('emotion3_user')||'null');
-  if(!user){window.location.href='login.html';return}
-  document.getElementById('uName').textContent=user.name;
-  document.getElementById('uAvatar').textContent=user.name.charAt(0).toUpperCase();
+  const user = JSON.parse(localStorage.getItem('emotion3_user') || '{"name":"User"}');
+  document.getElementById('uName').textContent = user.name;
+  document.getElementById('uAvatar').textContent = user.name.charAt(0).toUpperCase();
   renderList();
   greeting();
 })();
 
-function genId(){return'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)}
+function genId(){return 'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,6)}
 
 // ── CONVERSATIONS ──
 function saveConvs(){localStorage.setItem('e3_convs',JSON.stringify(convs))}
@@ -163,35 +162,37 @@ function renderList(){
 function loadConv(id){
   convId=id;document.getElementById('messages').innerHTML='';
   const c=convs[id];
-  if(c&&c.msgs)c.msgs.forEach(m=>addBubble(m.role,m.content,m.itype,null,false));
+  if(c&&c.msgs)c.msgs.forEach(m=>addBubble(m.role,m.content,m.itype,m.emotion,false));
   renderList();
 }
 function newConv(){
   convId=genId();document.getElementById('messages').innerHTML='';greeting();renderList();
 }
 function greeting(){
-  addBubble('bot',"Hello! I'm <strong>E.motion³</strong>, your emotion regulation assistant. 🌱<br>How are you feeling today? You can type or speak — I'm here to listen in any language.",null,null,false);
+  addBubble('bot',"Hello! I'm <strong>E.motion³</strong>. 🌱<br>How are you feeling? Type or speak — I support English, Sinhala, and Tamil.",null,null,false);
 }
 
-// ── PIPELINE ──
+// ── PIPELINE ANIMATION ──
 const PS=['ps-in','ps-mod','ps-llm','ps-tts'];
-function pReset(){PS.forEach(s=>document.getElementById(s).classList.remove('on'));['pa-tts','ps-tts'].forEach(s=>{const el=document.getElementById(s);if(el)el.style.opacity='1'})}
-async function pAnimate(steps,voice){
+function pReset(){PS.forEach(s=>document.getElementById(s).classList.remove('on'))}
+async function pAnimate(steps){
   pReset();
-  if(!voice){['pa-tts','ps-tts'].forEach(s=>{const el=document.getElementById(s);if(el)el.style.opacity='.25'})}
-  for(const s of steps){document.getElementById(s).classList.add('on');await wait(400)}
+  for(const s of steps){
+    const el = document.getElementById(s);
+    if(el) el.classList.add('on');
+    await new Promise(r=>setTimeout(r, 600));
+  }
 }
-function wait(ms){return new Promise(r=>setTimeout(r,ms))}
 
-// ── BUBBLES ──
+// ── UI BUBBLES ──
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function fmt(s){return s.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')}
-function eEmoji(e){return{happy:'😊',sad:'😢',anxious:'😟',angry:'😠',disgust:'🤢',neutral:'😌'}[e]||'💭'}
+function eEmoji(e){return{happy:'😊',sad:'😢',anxious:'😟',angry:'😠',disgust:'🤢',neutral:'😌'}[e.toLowerCase()]||'💭'}
 
 function addBubble(role,text,itype,emotion,anim=true){
   const wrap=document.getElementById('messages');
   const row=document.createElement('div');row.className='msg-row '+(role==='user'?'user':'bot');
-  if(role==='user'&&itype){const t=document.createElement('div');t.className='itag';t.innerHTML=itype==='voice'?'🎙️ Voice input':'💬 Text input';row.appendChild(t)}
+  if(role==='user'&&itype){const t=document.createElement('div');t.className='itag';t.innerHTML=itype==='voice'?'🎙️ Voice':'💬 Text';row.appendChild(t)}
   const b=document.createElement('div');b.className='bubble '+(role==='user'?'user':'bot');
   b.innerHTML=role==='user'?esc(text):fmt(text);row.appendChild(b);
   if(role==='bot'&&emotion){const c=document.createElement('div');c.className='emotion-chip';c.innerHTML=eEmoji(emotion)+' Detected: <strong>'+emotion+'</strong>';row.appendChild(c)}
@@ -206,93 +207,123 @@ function showTyping(){
 }
 function hideTyping(){const t=document.getElementById('typing');if(t)t.remove()}
 
-// ── TEXT PIPELINE: text → TER → LLM ──
+// ── CORE LOGIC: SEND TO PYTHON BACKEND ──
 async function sendText(){
   const inp=document.getElementById('userInput');
   const txt=inp.value.trim();if(!txt)return;
   inp.value='';document.getElementById('sendBtn').disabled=true;
-  addBubble('user',txt,'text',null);save('user',txt,'text');
-  pAnimate(['ps-in','ps-mod','ps-llm'],false);showTyping();
-  try{
-    const r=await fetch(API+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:txt,conv_id:convId})});
-    const d=await r.json();
-    hideTyping();pReset();
-    addBubble('bot',d.reply,null,d.emotion);save('bot',d.reply,'text');
-    setTitle(txt);
-  }catch(e){hideTyping();pReset();addBubble('bot','⚠️ Cannot reach server. Run: <strong>py app.py</strong>');}
+  
+  addBubble('user',txt,'text',null);
+  pAnimate(['ps-in','ps-mod','ps-llm','ps-tts']);
+  showTyping();
+
+  try {
+    const response = await fetch(`${API}/api/python/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: txt,
+        language: currentLanguage,
+        type: 'text'
+      })
+    });
+
+    const data = await response.json();
+    hideTyping();
+
+    if (data.status === 'success') {
+      addBubble('bot', data.reply_text, null, data.emotion);
+      save('user', txt, 'text', null);
+      save('bot', data.reply_text, 'text', data.emotion);
+      
+      // Play Audio from Base64
+      if (data.reply_audio_base64) {
+        const audio = new Audio(data.reply_audio_base64);
+        audio.play();
+      }
+    } else {
+      addBubble('bot', 'Error: ' + data.message);
+    }
+  } catch (e) {
+    hideTyping();
+    addBubble('bot', '⚠️ Connection failed. Is the Flask server running?');
+  }
   document.getElementById('sendBtn').disabled=false;
 }
 
-// ── VOICE PIPELINE: audio → SER → LLM → TTS ──
+// ── VOICE LOGIC ──
 async function toggleRec(){if(!isRec)await startRec();else stopRec()}
 async function startRec(){
   try{
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
     mediaRec=new MediaRecorder(stream);chunks=[];curTranscript='';
     mediaRec.ondataavailable=e=>{if(e.data.size>0)chunks.push(e.data)};
-    mediaRec.onstop=handleStop;mediaRec.start(100);
+    mediaRec.onstop=handleStop;mediaRec.start();
     isRec=true;
     document.getElementById('micBtn').classList.add('rec');
-    document.getElementById('micBtn').title='Click to stop';
-    // Web Speech API for live transcript
+    
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
     if(SR){
       speechRec=new SR();speechRec.continuous=true;speechRec.interimResults=true;
       speechRec.onresult=e=>{
-        let fin='',int='';
+        let int='';
         for(let i=e.resultIndex;i<e.results.length;i++){
-          if(e.results[i].isFinal)fin+=e.results[i][0].transcript;
+          if(e.results[i].isFinal) curTranscript+=e.results[i][0].transcript;
           else int+=e.results[i][0].transcript;
         }
-        if(fin)curTranscript+=fin+' ';
-        document.getElementById('userInput').placeholder=(curTranscript+int).trim()||'🎙️ Listening…';
+        document.getElementById('userInput').placeholder=(curTranscript+int).trim() || 'Listening...';
       };
-      speechRec.onerror=()=>{};speechRec.start();
-    }else{
-      document.getElementById('userInput').placeholder='🎙️ Recording…';
+      speechRec.start();
     }
-  }catch(e){alert('Microphone access denied. Please allow microphone access in your browser settings.')}
+  }catch(e){alert('Mic access denied')}
 }
 function stopRec(){
   isRec=false;
   document.getElementById('micBtn').classList.remove('rec');
-  document.getElementById('micBtn').title='Click to speak';
-  document.getElementById('userInput').placeholder="Type how you're feeling…";
-  if(speechRec){try{speechRec.stop()}catch(e){};speechRec=null}
-  if(mediaRec&&mediaRec.state!=='inactive'){mediaRec.stop();mediaRec.stream.getTracks().forEach(t=>t.stop())}
+  if(speechRec){speechRec.stop()}
+  if(mediaRec)mediaRec.stop();
 }
+
 async function handleStop(){
-  const transcript=curTranscript.trim()||'[Voice message]';
-  const blob=new Blob(chunks,{type:'audio/webm'});
-  addBubble('user',transcript,'voice',null);save('user',transcript,'voice');
-  pAnimate(['ps-in','ps-mod','ps-llm','ps-tts'],true);showTyping();
-  try{
-    const form=new FormData();
-    form.append('audio',blob,'rec.webm');
-    form.append('transcript',transcript);
-    form.append('conv_id',convId);
-    const r=await fetch(API+'/speech',{method:'POST',body:form});
-    const d=await r.json();
-    hideTyping();pReset();
-    addBubble('bot',d.reply,null,d.emotion);save('bot',d.reply,'voice');setTitle(transcript);
-    if(d.audio_url){new Audio(API+d.audio_url).play().catch(()=>{})}
-  }catch(e){hideTyping();pReset();addBubble('bot','⚠️ Cannot reach server. Run: <strong>py app.py</strong>')}
+  const transcript = curTranscript.trim() || "Voice Input";
+  addBubble('user', transcript, 'voice', null);
+  showTyping();
+  pAnimate(['ps-in','ps-mod','ps-llm','ps-tts']);
+
+  // For simplicity, we send the transcript. 
+  // If you want to send actual audio file, you'd use FormData and 'type': 'voice'
+  try {
+    const response = await fetch(`${API}/api/python/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: transcript,
+        language: currentLanguage,
+        type: 'text' // Change to 'voice' if backend is ready to handle binary audio
+      })
+    });
+    const data = await response.json();
+    hideTyping();
+    if(data.status === 'success'){
+      addBubble('bot', data.reply_text, null, data.emotion);
+      if(data.reply_audio_base64) new Audio(data.reply_audio_base64).play();
+    }
+  } catch(e) {
+    hideTyping();
+  }
 }
 
 // ── HELPERS ──
-function save(role,content,itype){
-  if(!convs[convId])convs[convId]={title:'New conversation',msgs:[]};
-  convs[convId].msgs.push({role,content,itype});saveConvs();
-}
-function setTitle(msg){
-  if(!convs[convId])return;
-  if(convs[convId].title==='New conversation'){convs[convId].title=msg.slice(0,32)+(msg.length>32?'…':'');saveConvs();renderList();}
+function save(role,content,itype,emotion){
+  if(!convs[convId])convs[convId]={title:content.slice(0,20),msgs:[]};
+  convs[convId].msgs.push({role,content,itype,emotion});
+  saveConvs();
 }
 function toggleSidebar(){
   const s=document.querySelector('.sidebar');
-  s.style.display=s.style.display==='none'?'flex':'none';
+  s.style.display = (s.style.display === 'none' || s.style.display === '') ? 'flex' : 'none';
 }
-function signOut(){localStorage.removeItem('emotion3_user');window.location.href='login.html'}
+function signOut(){window.location.href='login.html'}
 </script>
 </body>
 </html>
