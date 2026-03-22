@@ -2,4 +2,6 @@ fastapi
 gradio_client
 uvicorn
 flask
+flask-cors
 gradio_client
+python-dotenv

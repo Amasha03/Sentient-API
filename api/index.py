@@ -7,6 +7,8 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
+app.debug=False
+
 # --- 1. CONFIGURATION: YOUR HUGGING FACE SPACES ---
 SPACE_TEXT_EMO  = "E-motionAssistant/Space4"
 SPACE_AUDIO_EMO = "E-motionAssistant/Space5"
@@ -71,6 +73,3 @@ def unified_ai_pipeline():
             "message": str(e)
         }), 500
 
-if __name__ == "__main__":
-    # Local development settings
-    app.run(debug=True, port=5000)
